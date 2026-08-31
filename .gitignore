@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -11,18 +11,30 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
+
+# turborepo
+.turbo/
 
 # next.js
-/.next/
-/out/
+.next/
+out/
 
-# production
-/build
+# expo / react native
+.expo/
+.expo-shared/
+
+# build output
+dist/
+build/
 
 # misc
 .DS_Store
 *.pem
+
+# markdown notes/docs (local only, not for GitHub)
+*.md
+!/README.md
 
 # debug
 npm-debug.log*
