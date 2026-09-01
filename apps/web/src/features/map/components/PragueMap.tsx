@@ -20,7 +20,7 @@ export function PragueMap() {
         latitude: PRAGUE_CENTER.latitude,
         zoom: PRAGUE_DEFAULT_ZOOM,
       }}
-      mapStyle={`https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${MAPTILER_KEY}`}
+      mapStyle={`https://api.maptiler.com/maps/streets-v4-dark/style.json?key=${MAPTILER_KEY}`}
     />
   );
 }
