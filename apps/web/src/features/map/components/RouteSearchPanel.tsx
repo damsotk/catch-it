@@ -17,16 +17,21 @@ function ClockGlyph() {
   );
 }
 
-export function RouteSearchPanel() {
+type RouteSearchPanelProps = {
+  ready?: boolean;
+};
+
+export function RouteSearchPanel({ ready = true }: RouteSearchPanelProps) {
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [departure, setDeparture] = useState("");
   const [entered, setEntered] = useState(false);
 
   useEffect(() => {
+    if (!ready) return;
     const frame = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [ready]);
 
   return (
     <div className="pointer-events-none absolute inset-y-0 left-0 z-10 flex overflow-hidden">
