@@ -6,6 +6,22 @@ export function ArrowGlyph() {
   );
 }
 
+export function ArrowRightGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5"
+    >
+      <path d="M5 12h12.5M12.5 6.5 18 12l-5.5 5.5" />
+    </svg>
+  );
+}
+
 export function PinGlyph() {
   return (
     <svg

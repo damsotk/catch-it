@@ -1,5 +1,6 @@
 import type { RouteOption } from "@catch-it/core";
 import { formatClock, formatDuration } from "./format";
+import { ArrowRightGlyph } from "./icons";
 
 const FALLBACK_ROUTE_COLOR = "#4b9fff";
 
@@ -32,9 +33,12 @@ export function RouteOptionCard({
           : "bg-[#1f2423] hover:bg-[#242a29]"
       }`}
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-sm font-semibold text-neutral-100">
-          {formatClock(option.departTimeSec)} →{" "}
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-100">
+          {formatClock(option.departTimeSec)}
+          <span className="flex text-neutral-500">
+            <ArrowRightGlyph />
+          </span>
           {formatClock(option.arriveTimeSec)}
         </span>
         <span className="shrink-0 text-xs text-neutral-400">
@@ -42,19 +46,31 @@ export function RouteOptionCard({
         </span>
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+      <div className="mt-2.5 space-y-1.5">
         {rides.map((leg, index) => (
-          <span
-            key={`${leg.routeName}-${index}`}
-            className="rounded-full px-2 py-0.5 text-[11px] font-bold text-white"
-            style={{ backgroundColor: leg.routeColor ?? FALLBACK_ROUTE_COLOR }}
+          <div
+            key={`${leg.routeName}-${leg.boardTime}-${index}`}
+            className="flex items-center gap-2"
           >
-            {leg.routeName}
-          </span>
+            <span
+              className="min-w-9 shrink-0 rounded-full px-2 py-0.5 text-center text-[11px] font-bold text-white"
+              style={{
+                backgroundColor: leg.routeColor ?? FALLBACK_ROUTE_COLOR,
+              }}
+            >
+              {leg.routeName}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-xs text-neutral-300">
+              {leg.stops[0]?.name ?? "—"}
+            </span>
+            <span className="shrink-0 text-[11px] tabular-nums text-neutral-500">
+              {formatClock(leg.boardTime)}
+            </span>
+          </div>
         ))}
       </div>
 
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2.5 flex items-center gap-2">
         <span className="text-xs text-neutral-400">
           {transfersLabel(option.transfers)}
         </span>
