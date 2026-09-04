@@ -5,6 +5,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { Map, MapRef } from "react-map-gl/maplibre";
 import { PRAGUE_CENTER, PRAGUE_DEFAULT_ZOOM } from "@catch-it/core";
 import { RouteLeg } from "@/features/map/types";
+import { RouteLayer } from "./RouteLayer";
 
 const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
 
@@ -24,7 +25,29 @@ export function PragueMap({ onLoad, legs }: PragueMapProps) {
   }, [onLoad]);
 
   useEffect(() => {
-    console.log(legs);
+    if (!legs?.length) return;
+
+    const points = legs?.flatMap((leg) => leg.geometry);
+
+    let minLon = Infinity,
+      minLat = Infinity;
+    let maxLon = -Infinity,
+      maxLat = -Infinity;
+
+    for (const [lon, lat] of points) {
+      if (lon < minLon) minLon = lon;
+      if (lon > maxLon) maxLon = lon;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+
+    mapRef.current?.fitBounds(
+      [
+        [minLon, minLat],
+        [maxLon, maxLat],
+      ],
+      { padding: 80, duration: 800 },
+    );
   }, [legs]);
 
   if (!MAPTILER_KEY) {
@@ -49,7 +72,10 @@ export function PragueMap({ onLoad, legs }: PragueMapProps) {
           onLoad?.();
         }}
         ref={mapRef}
-      />
+      >
+        {legs && <RouteLayer legs={legs} />}
+      </Map>
+
       <div
         className={`pointer-events-none absolute inset-0 flex items-center justify-center bg-neutral-950 transition-opacity duration-500 ${
           loaded ? "opacity-0" : "opacity-100"
