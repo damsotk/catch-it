@@ -1,6 +1,7 @@
 const TRANSFER_BUFFER_SEC = 120;
 
 const MAX_LEGS = 32;
+const MAX_JOURNEY_SEC = 3 * 3600;
 
 function reconstructPath(reached, destStopId, gtfs) {
   const { stops, trips, routes, stopTimesByTrip } = gtfs;
@@ -111,15 +112,21 @@ export function searchRoute(
 
   let frontier = [...reached.keys()];
 
+  let bestArrival = startTimeSec + MAX_JOURNEY_SEC;
+
   for (let round = 0; round < maxRounds; round += 1) {
     const updates = new Map();
 
     const consider = (stopId, candidate) => {
+      if (candidate.time >= bestArrival) return;
+
       const known = reached.get(stopId);
       if (known && known.time <= candidate.time) return;
       const pending = updates.get(stopId);
       if (pending && pending.time <= candidate.time) return;
+
       updates.set(stopId, candidate);
+      if (destinations.has(stopId)) bestArrival = candidate.time;
     };
 
     const boardingByTrip = new Map();
@@ -127,6 +134,7 @@ export function searchRoute(
     for (const stopId of frontier) {
       const from = reached.get(stopId);
       if (!from) continue;
+      if (from.time >= bestArrival) continue;
 
       const boardings = tripsByStop.get(stopId);
       if (!boardings) continue;
@@ -150,9 +158,12 @@ export function searchRoute(
     for (const [tripId, boarding] of boardingByTrip) {
       const stopTimes = stopTimesByTrip.get(tripId);
       const board = stopTimes[boarding.seqIndex];
+      if (board.dep >= bestArrival) continue;
 
       for (let i = boarding.seqIndex + 1; i < stopTimes.length; i += 1) {
         const alight = stopTimes[i];
+        if (alight.arr >= bestArrival) break;
+
         consider(alight.stopId, {
           time: alight.arr,
           viaTripId: tripId,
@@ -162,12 +173,6 @@ export function searchRoute(
           alightSeqIndex: i,
         });
       }
-    }
-
-    const arrived = earliestOf(updates);
-    if (arrived) {
-      for (const [stopId, update] of updates) reached.set(stopId, update);
-      return finish(arrived);
     }
 
     for (const [stopId, update] of [...updates]) {
@@ -190,8 +195,11 @@ export function searchRoute(
 
     if (updates.size === 0) break;
 
-    for (const [stopId, update] of updates) reached.set(stopId, update);
-    frontier = [...updates.keys()];
+    frontier = [];
+    for (const [stopId, update] of updates) {
+      reached.set(stopId, update);
+      if (update.time < bestArrival) frontier.push(stopId);
+    }
   }
 
   const reachedDest = earliestOf(reached);
@@ -229,8 +237,9 @@ export function searchDepartures(
     );
     if (!legs) break;
 
-    options.push(summarize(legs));
-    departAfter = legs[0].boardTime + 1;
+    const option = summarize(legs);
+    options.push(option);
+    departAfter = option.departTimeSec + 1;
   }
 
   let fastest = 0;
