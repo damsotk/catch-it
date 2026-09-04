@@ -84,7 +84,6 @@ export function RouteLayer({ legs }: RouteLayerProps) {
                 backgroundColor: leg.routeColor ?? FALLBACK_ROUTE_COLOR,
               }}
             >
-              123
               {leg.routeName}
             </span>
           </Marker>

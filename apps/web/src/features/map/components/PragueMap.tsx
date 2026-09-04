@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Map, MapRef } from "react-map-gl/maplibre";
 import { PRAGUE_CENTER, PRAGUE_DEFAULT_ZOOM } from "@catch-it/core";
+import { useFitRouteBounds } from "@/features/map/hooks/useFitRouteBounds";
 import { RouteLeg } from "@/features/map/types";
 import { RouteLayer } from "./RouteLayer";
 
@@ -18,37 +19,13 @@ export function PragueMap({ onLoad, legs }: PragueMapProps) {
   const [loaded, setLoaded] = useState(false);
   const mapRef = useRef<MapRef>(null);
 
+  useFitRouteBounds(mapRef, legs, loaded);
+
   useEffect(() => {
     if (!MAPTILER_KEY) {
       onLoad?.();
     }
   }, [onLoad]);
-
-  useEffect(() => {
-    if (!legs?.length) return;
-
-    const points = legs?.flatMap((leg) => leg.geometry);
-
-    let minLon = Infinity,
-      minLat = Infinity;
-    let maxLon = -Infinity,
-      maxLat = -Infinity;
-
-    for (const [lon, lat] of points) {
-      if (lon < minLon) minLon = lon;
-      if (lon > maxLon) maxLon = lon;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-    }
-
-    mapRef.current?.fitBounds(
-      [
-        [minLon, minLat],
-        [maxLon, maxLat],
-      ],
-      { padding: 80, duration: 800 },
-    );
-  }, [legs]);
 
   if (!MAPTILER_KEY) {
     return (

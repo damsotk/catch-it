@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import type { RouteOption, RouteSearchRequest } from "@catch-it/core";
+import type { RouteSearchStatus } from "@/features/map/hooks/useRouteSearch";
 import { CollapsibleRow } from "./CollapsibleRow";
 import {
   ArrowGlyph,
@@ -10,6 +11,9 @@ import {
   PinGlyph,
 } from "./icons";
 import { RouteInputRow, RouteSubmitRow } from "./RouteInputRow";
+import { RouteSummary } from "./RouteSummary";
+import { usePanelReveal } from "./usePanelReveal";
+import { useRouteSearchForm } from "./useRouteSearchForm";
 
 const ROW_COUNT = 5;
 const ROW_STAGGER_MS = 70;
@@ -20,19 +24,33 @@ function rowDelay(order: number, expanded: boolean) {
 
 type RouteSearchPanelProps = {
   ready?: boolean;
+  status: RouteSearchStatus;
+  error: string | null;
+  option: RouteOption | null;
+  onSearch: (request: RouteSearchRequest) => void;
 };
 
-export function RouteSearchPanel({ ready = true }: RouteSearchPanelProps) {
-  const [origin, setOrigin] = useState("");
-  const [destination, setDestination] = useState("");
-  const [departure, setDeparture] = useState("");
-  const [expanded, setExpanded] = useState(false);
+export function RouteSearchPanel({
+  ready = true,
+  status,
+  error,
+  option,
+  onSearch,
+}: RouteSearchPanelProps) {
+  const { expanded, setExpanded } = usePanelReveal(ready);
+  const {
+    origin,
+    setOrigin,
+    destination,
+    setDestination,
+    departure,
+    setDeparture,
+    canSubmit,
+    submit,
+    submitOnEnter,
+  } = useRouteSearchForm(onSearch);
 
-  useEffect(() => {
-    if (!ready) return;
-    const frame = requestAnimationFrame(() => setExpanded(true));
-    return () => cancelAnimationFrame(frame);
-  }, [ready]);
+  const searching = status === "loading";
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10">
@@ -86,6 +104,7 @@ export function RouteSearchPanel({ ready = true }: RouteSearchPanelProps) {
               <input
                 value={origin}
                 onChange={(event) => setOrigin(event.target.value)}
+                onKeyDown={submitOnEnter}
                 placeholder="From"
                 className="w-full bg-transparent text-sm text-neutral-100 placeholder:text-neutral-400 outline-none"
               />
@@ -101,6 +120,7 @@ export function RouteSearchPanel({ ready = true }: RouteSearchPanelProps) {
               <input
                 value={destination}
                 onChange={(event) => setDestination(event.target.value)}
+                onKeyDown={submitOnEnter}
                 placeholder="To"
                 className="w-full bg-transparent text-sm text-neutral-100 placeholder:text-neutral-400 outline-none"
               />
@@ -118,6 +138,7 @@ export function RouteSearchPanel({ ready = true }: RouteSearchPanelProps) {
                 type="time"
                 value={departure}
                 onChange={(event) => setDeparture(event.target.value)}
+                onKeyDown={submitOnEnter}
                 className="bg-transparent text-sm text-neutral-100 outline-none [color-scheme:dark]"
               />
             </RouteInputRow>
@@ -128,9 +149,25 @@ export function RouteSearchPanel({ ready = true }: RouteSearchPanelProps) {
             delayMs={rowDelay(4, expanded)}
             maxHeight={56}
           >
-            <RouteSubmitRow>Find a route</RouteSubmitRow>
+            <RouteSubmitRow onClick={submit} disabled={!canSubmit || searching}>
+              {searching ? "Searching…" : "Find a route"}
+            </RouteSubmitRow>
           </CollapsibleRow>
         </div>
+
+        <CollapsibleRow
+          expanded={expanded && (status === "error" || option !== null)}
+          delayMs={0}
+          maxHeight={140}
+        >
+          {status === "error" ? (
+            <p className="mx-5 mt-3 rounded-2xl bg-[#2a1f21] px-4 py-3 text-xs text-[#ff8a80]">
+              {error}
+            </p>
+          ) : (
+            option && <RouteSummary option={option} />
+          )}
+        </CollapsibleRow>
 
         <div className="flex-1" />
       </div>

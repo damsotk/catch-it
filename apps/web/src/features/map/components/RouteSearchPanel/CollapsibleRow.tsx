@@ -8,7 +8,6 @@ type CollapsibleRowProps = {
   children: ReactNode;
 };
 
-/** Animates a row between hidden (0 height) and its natural height, for staggered reveal/collapse sequences. */
 export function CollapsibleRow({
   expanded,
   delayMs,
