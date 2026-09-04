@@ -10,13 +10,13 @@ import {
   sliceShape,
   timeToSeconds,
 } from "@/server/gtfs/loadGtfs.mjs";
-import { searchAlternatives } from "@/server/gtfs/search.mjs";
+import { searchDepartures } from "@/server/gtfs/search.mjs";
 import { getGtfs } from "@/server/gtfs/store.mjs";
 import type { EngineLeg, EngineOption, GtfsContext } from "@/server/gtfs/types";
 
 export const runtime = "nodejs";
 
-const MAX_OPTIONS = 3;
+const MAX_OPTIONS = 15;
 
 function nowSeconds(): number {
   const now = new Date();
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     return error(`No stop found matching "${destination}".`, 404);
   }
 
-  const options: EngineOption[] = searchAlternatives(
+  const options: EngineOption[] = searchDepartures(
     gtfs,
     originStopIds,
     destinationStopIds,

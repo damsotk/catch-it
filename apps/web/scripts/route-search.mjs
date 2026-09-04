@@ -4,7 +4,7 @@ import {
   sliceShape,
   timeToSeconds,
 } from "../src/server/gtfs/loadGtfs.mjs";
-import { searchAlternatives } from "../src/server/gtfs/search.mjs";
+import { searchDepartures } from "../src/server/gtfs/search.mjs";
 import { getGtfs } from "../src/server/gtfs/store.mjs";
 
 const [origin, destination, time] = process.argv.slice(2);
@@ -38,12 +38,12 @@ const startTimeSec = time
     })();
 
 const startedAt = Date.now();
-const options = searchAlternatives(
+const options = searchDepartures(
   gtfs,
   originStopIds,
   destinationStopIds,
   startTimeSec,
-  3,
+  15,
 );
 console.log(
   `search from ${secondsToTime(startTimeSec)}: ${options.length} option(s) in ${Date.now() - startedAt}ms\n`,

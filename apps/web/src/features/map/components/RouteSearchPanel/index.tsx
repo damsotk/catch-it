@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import type { RouteOption, RouteSearchRequest } from "@catch-it/core";
 import type { RouteSearchStatus } from "@/features/map/hooks/useRouteSearch";
 import { CollapsibleRow } from "./CollapsibleRow";
@@ -11,9 +12,10 @@ import {
   PinGlyph,
 } from "./icons";
 import { RouteInputRow, RouteSubmitRow } from "./RouteInputRow";
-import { RouteSummary } from "./RouteSummary";
+import { RouteOptionCard } from "./RouteOptionCard";
 import { usePanelReveal } from "./usePanelReveal";
 import { useRouteSearchForm } from "./useRouteSearchForm";
+import { useScrollReveal } from "./useScrollReveal";
 
 const ROW_COUNT = 5;
 const ROW_STAGGER_MS = 70;
@@ -26,7 +28,9 @@ type RouteSearchPanelProps = {
   ready?: boolean;
   status: RouteSearchStatus;
   error: string | null;
-  option: RouteOption | null;
+  options: RouteOption[];
+  selectedIndex: number;
+  onSelectOption: (index: number) => void;
   onSearch: (request: RouteSearchRequest) => void;
 };
 
@@ -34,7 +38,9 @@ export function RouteSearchPanel({
   ready = true,
   status,
   error,
-  option,
+  options,
+  selectedIndex,
+  onSelectOption,
   onSearch,
 }: RouteSearchPanelProps) {
   const { expanded, setExpanded } = usePanelReveal(ready);
@@ -49,6 +55,9 @@ export function RouteSearchPanel({
     submit,
     submitOnEnter,
   } = useRouteSearchForm(onSearch);
+
+  const listRef = useRef<HTMLDivElement>(null);
+  useScrollReveal(listRef, options);
 
   const searching = status === "loading";
 
@@ -94,7 +103,7 @@ export function RouteSearchPanel({
           </div>
         </CollapsibleRow>
 
-        <div className="mx-5 mt-1 overflow-hidden rounded-2xl bg-[#1f2423]">
+        <div className="mx-5 mt-1 shrink-0 overflow-hidden rounded-2xl bg-[#1f2423]">
           <CollapsibleRow
             expanded={expanded}
             delayMs={rowDelay(1, expanded)}
@@ -155,21 +164,27 @@ export function RouteSearchPanel({
           </CollapsibleRow>
         </div>
 
-        <CollapsibleRow
-          expanded={expanded && (status === "error" || option !== null)}
-          delayMs={0}
-          maxHeight={140}
-        >
-          {status === "error" ? (
-            <p className="mx-5 mt-3 rounded-2xl bg-[#2a1f21] px-4 py-3 text-xs text-[#ff8a80]">
-              {error}
-            </p>
-          ) : (
-            option && <RouteSummary option={option} />
-          )}
-        </CollapsibleRow>
+        {status === "error" && (
+          <p className="mx-5 mt-3 shrink-0 rounded-2xl bg-[#2a1f21] px-4 py-3 text-xs text-[#ff8a80]">
+            {error}
+          </p>
+        )}
 
-        <div className="flex-1" />
+        <div
+          ref={listRef}
+          className={`mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto px-5 pb-5 transition-opacity duration-300 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+            expanded ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          {options.map((option, index) => (
+            <RouteOptionCard
+              key={`${option.departTimeSec}-${index}`}
+              option={option}
+              selected={index === selectedIndex}
+              onSelect={() => onSelectOption(index)}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

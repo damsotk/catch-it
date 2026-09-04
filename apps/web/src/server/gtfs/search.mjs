@@ -122,6 +122,8 @@ export function searchRoute(
       updates.set(stopId, candidate);
     };
 
+    const boardingByTrip = new Map();
+
     for (const stopId of frontier) {
       const from = reached.get(stopId);
       if (!from) continue;
@@ -130,27 +132,35 @@ export function searchRoute(
       if (!boardings) continue;
 
       for (const { tripId, seqIndex } of boardings) {
+        const known = boardingByTrip.get(tripId);
+        if (known && known.seqIndex <= seqIndex) continue;
+
         const trip = trips.get(tripId);
         if (!trip) continue;
         if (excludeRouteIds && excludeRouteIds.has(trip.routeId)) continue;
 
         const stopTimes = stopTimesByTrip.get(tripId);
         if (!stopTimes) continue;
+        if (stopTimes[seqIndex].dep < from.time) continue;
 
-        const board = stopTimes[seqIndex];
-        if (board.dep < from.time) continue;
+        boardingByTrip.set(tripId, { stopId, seqIndex });
+      }
+    }
 
-        for (let i = seqIndex + 1; i < stopTimes.length; i += 1) {
-          const alight = stopTimes[i];
-          consider(alight.stopId, {
-            time: alight.arr,
-            viaTripId: tripId,
-            boardStopId: stopId,
-            boardTime: board.dep,
-            boardSeqIndex: seqIndex,
-            alightSeqIndex: i,
-          });
-        }
+    for (const [tripId, boarding] of boardingByTrip) {
+      const stopTimes = stopTimesByTrip.get(tripId);
+      const board = stopTimes[boarding.seqIndex];
+
+      for (let i = boarding.seqIndex + 1; i < stopTimes.length; i += 1) {
+        const alight = stopTimes[i];
+        consider(alight.stopId, {
+          time: alight.arr,
+          viaTripId: tripId,
+          boardStopId: boarding.stopId,
+          boardTime: board.dep,
+          boardSeqIndex: boarding.seqIndex,
+          alightSeqIndex: i,
+        });
       }
     }
 
@@ -189,58 +199,47 @@ export function searchRoute(
 }
 
 function summarize(legs) {
+  const rides = legs.filter((leg) => !leg.transfer).length;
+
   return {
     legs,
     departTimeSec: legs[0].boardTime,
     arriveTimeSec: legs[legs.length - 1].alightTime,
     durationSec: legs[legs.length - 1].alightTime - legs[0].boardTime,
-    transfers: legs.filter((leg) => leg.transfer).length,
+    transfers: Math.max(0, rides - 1),
   };
 }
 
-function signatureOf(legs) {
-  return legs
-    .filter((leg) => !leg.transfer)
-    .map((leg) => `${leg.routeId}:${leg.boardStopId}-${leg.alightStopId}`)
-    .join("|");
-}
-
-export function searchAlternatives(
+export function searchDepartures(
   gtfs,
   originStopIds,
   destinationStopIds,
   startTimeSec,
-  maxAlternatives = 3,
+  maxOptions = 15,
 ) {
-  const excludeRouteIds = new Set();
-  const seenSignatures = new Set();
   const options = [];
+  let departAfter = startTimeSec;
 
-  for (let attempt = 0; attempt < maxAlternatives; attempt += 1) {
+  for (let round = 0; round < maxOptions; round += 1) {
     const legs = searchRoute(
       gtfs,
       originStopIds,
       destinationStopIds,
-      startTimeSec,
-      { excludeRouteIds: excludeRouteIds.size > 0 ? excludeRouteIds : null },
+      departAfter,
     );
     if (!legs) break;
 
-    const signature = signatureOf(legs);
-    if (!seenSignatures.has(signature)) {
-      seenSignatures.add(signature);
-      options.push(summarize(legs));
-    }
-
-    const firstRide = legs.find((leg) => !leg.transfer);
-    if (!firstRide?.routeId) break;
-    excludeRouteIds.add(firstRide.routeId);
+    options.push(summarize(legs));
+    departAfter = legs[0].boardTime + 1;
   }
 
-  options.sort((a, b) => a.durationSec - b.durationSec);
+  let fastest = 0;
+  for (let i = 1; i < options.length; i += 1) {
+    if (options[i].durationSec < options[fastest].durationSec) fastest = i;
+  }
 
   return options.map((option, index) => ({
     ...option,
-    isFastest: index === 0,
+    isFastest: index === fastest,
   }));
 }
