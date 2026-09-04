@@ -51,3 +51,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# GTFS feed (downloaded from data.pid.cz, ~250 MB)
+data/gtfs/
