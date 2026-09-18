@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { Layer, Marker, Source } from "react-map-gl/maplibre";
+import { useEffect, useMemo, useState } from "react";
+import { Layer, Marker, Source, useMap } from "react-map-gl/maplibre";
 import type { ExpressionSpecification } from "maplibre-gl";
 import type { TransitStop } from "@catch-it/core";
 import {
@@ -9,6 +9,12 @@ import {
   MODE_RANK,
   MODE_SCALE,
 } from "@/features/map/transitModes";
+import {
+  ARROW_BASE,
+  arrowImageId,
+  glyphImageId,
+  registerStopIcons,
+} from "@/features/map/stopIcons";
 
 export const STOPS_LAYER_ID = "stops-core";
 
@@ -16,16 +22,70 @@ const MAJOR_RANK = MODE_RANK.train;
 const MAX_POPUP_LINES = 14;
 const LABEL_FONT = ["Roboto Medium", "Noto Sans Medium"];
 
-const radius = (base: [number, number, number]): ExpressionSpecification => [
+type ZoomStops = [zoom: number, value: number][];
+
+// Dot radius per zoom for a stop of scale 1; bigger modes multiply it.
+const CORE_RADIUS: ZoomStops = [
+  [10, 1.3],
+  [13, 3.2],
+  [15, 5.5],
+  [17, 10],
+];
+const GLOW_RADIUS: ZoomStops = [
+  [10, 3],
+  [13, 8],
+  [16, 15],
+  [17, 18],
+];
+
+// Glyphs show up once the dot is large enough to hold one.
+const GLYPH_MIN_ZOOM = 15;
+const ARROW_MIN_ZOOM = 14;
+const GLYPH_FILL = 1.45;
+const GLYPH_SIZE = 24;
+const ARROW_GAP = 2.5;
+
+const byZoom = (
+  stops: ZoomStops,
+  value: (base: number) => ExpressionSpecification,
+): ExpressionSpecification => [
   "interpolate",
   ["linear"],
   ["zoom"],
-  10,
-  ["*", ["get", "scale"], base[0]],
-  13,
-  ["*", ["get", "scale"], base[1]],
-  16,
-  ["*", ["get", "scale"], base[2]],
+  ...stops.flatMap(([zoom, base]) => [zoom, value(base)]),
+];
+
+const scaled = (base: number): ExpressionSpecification => [
+  "*",
+  ["get", "scale"],
+  base,
+];
+
+const radiusAt = (zoom: number) => {
+  for (let i = 1; i < CORE_RADIUS.length; i += 1) {
+    const [z0, r0] = CORE_RADIUS[i - 1];
+    const [z1, r1] = CORE_RADIUS[i];
+    if (zoom <= z1) return r0 + ((r1 - r0) * (zoom - z0)) / (z1 - z0);
+  }
+  return CORE_RADIUS[CORE_RADIUS.length - 1][1];
+};
+
+// CORE_RADIUS trimmed to start at `min`, for layers with a minzoom.
+const fromZoom = (min: number): ZoomStops => [
+  [min, radiusAt(min)],
+  ...CORE_RADIUS.filter(([zoom]) => zoom > min),
+];
+
+const radius = (stops: ZoomStops) => byZoom(stops, scaled);
+
+const fadeIn = (from: number): ExpressionSpecification => [
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  from,
+  0,
+  from + 0.6,
+  1,
 ];
 
 const stopColor = (stop: TransitStop) => stop.color ?? MODE_COLORS[stop.mode];
@@ -37,11 +97,14 @@ type StopsLayerProps = {
 };
 
 export function StopsLayer({ stops, hoveredIndex, dimmed }: StopsLayerProps) {
+  const iconsReady = useStopIcons(stops);
+
   const geojson = useMemo(
     () => ({
       type: "FeatureCollection" as const,
       features: (stops ?? []).map((stop, index) => {
         const rank = MODE_RANK[stop.mode];
+        const color = stopColor(stop);
         return {
           type: "Feature" as const,
           id: index,
@@ -51,10 +114,15 @@ export function StopsLayer({ stops, hoveredIndex, dimmed }: StopsLayerProps) {
           },
           properties: {
             name: stop.name,
-            color: stopColor(stop),
+            color,
             ring: rank >= MAJOR_RANK ? "#ffffff" : "#0b0d12",
             rank,
             scale: MODE_SCALE[stop.mode],
+            glyph: glyphImageId(stop.mode, color),
+            ...(stop.bearing !== null && {
+              bearing: stop.bearing,
+              arrow: arrowImageId(color),
+            }),
           },
         };
       }),
@@ -74,20 +142,48 @@ export function StopsLayer({ stops, hoveredIndex, dimmed }: StopsLayerProps) {
           layout={{ "circle-sort-key": ["get", "rank"] }}
           paint={{
             "circle-color": ["get", "color"],
-            "circle-radius": radius([3, 8, 15]),
+            "circle-radius": radius(GLOW_RADIUS),
             "circle-blur": 1,
             "circle-opacity": dimmed
               ? 0
               : ["case", [">=", ["get", "rank"], MAJOR_RANK], 0.55, 0.3],
           }}
         />
+        {iconsReady && (
+          <Layer
+            id="stops-direction"
+            type="symbol"
+            minzoom={ARROW_MIN_ZOOM}
+            filter={["has", "bearing"]}
+            layout={{
+              "icon-image": ["get", "arrow"],
+              "icon-size": byZoom(
+                fromZoom(ARROW_MIN_ZOOM),
+                (base) => [
+                  "/",
+                  ["+", scaled(base), ARROW_GAP],
+                  ARROW_BASE,
+                ],
+              ),
+              "icon-rotate": ["get", "bearing"],
+              "icon-rotation-alignment": "map",
+              "icon-pitch-alignment": "map",
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
+              "symbol-sort-key": ["get", "rank"],
+            }}
+            paint={{
+              "icon-opacity": dimmed ? 0.35 : fadeIn(ARROW_MIN_ZOOM),
+            }}
+          />
+        )}
         <Layer
           id={STOPS_LAYER_ID}
           type="circle"
           layout={{ "circle-sort-key": ["get", "rank"] }}
           paint={{
             "circle-color": ["get", "color"],
-            "circle-radius": radius([1.3, 3.2, 6]),
+            "circle-radius": radius(CORE_RADIUS),
             "circle-stroke-color": ["get", "ring"],
             "circle-stroke-width": [
               "interpolate",
@@ -102,6 +198,26 @@ export function StopsLayer({ stops, hoveredIndex, dimmed }: StopsLayerProps) {
             "circle-stroke-opacity": dimmed ? 0.35 : 1,
           }}
         />
+        {iconsReady && (
+          <Layer
+            id="stops-glyphs"
+            type="symbol"
+            minzoom={GLYPH_MIN_ZOOM}
+            layout={{
+              "icon-image": ["get", "glyph"],
+              "icon-size": byZoom(
+                fromZoom(GLYPH_MIN_ZOOM),
+                (base) => scaled((base * GLYPH_FILL) / GLYPH_SIZE),
+              ),
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
+              "symbol-sort-key": ["get", "rank"],
+            }}
+            paint={{
+              "icon-opacity": dimmed ? 0.35 : fadeIn(GLYPH_MIN_ZOOM),
+            }}
+          />
+        )}
         <Layer
           id="stops-labels-major"
           type="symbol"
@@ -112,7 +228,15 @@ export function StopsLayer({ stops, hoveredIndex, dimmed }: StopsLayerProps) {
             "text-font": LABEL_FONT,
             "text-size": 12,
             "text-anchor": "top",
-            "text-offset": [0, 0.9],
+            "text-offset": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              13,
+              ["literal", [0, 0.9]],
+              17,
+              ["literal", [0, 2]],
+            ],
             "symbol-sort-key": ["-", ["get", "rank"]],
           }}
           paint={{
@@ -132,7 +256,15 @@ export function StopsLayer({ stops, hoveredIndex, dimmed }: StopsLayerProps) {
             "text-font": LABEL_FONT,
             "text-size": 11,
             "text-anchor": "top",
-            "text-offset": [0, 0.8],
+            "text-offset": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              15.5,
+              ["literal", [0, 0.8]],
+              17,
+              ["literal", [0, 1.4]],
+            ],
             "symbol-sort-key": ["-", ["get", "rank"]],
           }}
           paint={{
@@ -147,6 +279,37 @@ export function StopsLayer({ stops, hoveredIndex, dimmed }: StopsLayerProps) {
       {hovered && <StopPopup stop={hovered} />}
     </>
   );
+}
+
+// Registers the SVG glyphs and one arrow per stop colour on the map, and
+// reports when they are ready so symbol layers never reference missing images.
+function useStopIcons(stops: TransitStop[] | null) {
+  const { current: mapRef } = useMap();
+  const [readyKey, setReadyKey] = useState<string | null>(null);
+
+  const colors = useMemo(
+    () => [...new Set((stops ?? []).map(stopColor))].sort(),
+    [stops],
+  );
+  const key = colors.join(",");
+
+  useEffect(() => {
+    const map = mapRef?.getMap();
+    if (!map) return;
+
+    let cancelled = false;
+    registerStopIcons(map, colors)
+      .then(() => {
+        if (!cancelled) setReadyKey(key);
+      })
+      .catch((cause) => console.error(cause));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mapRef, colors, key]);
+
+  return readyKey === key;
 }
 
 function StopPopup({ stop }: { stop: TransitStop }) {

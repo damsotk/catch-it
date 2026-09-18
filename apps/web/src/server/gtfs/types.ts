@@ -44,7 +44,7 @@ export type GtfsContext = {
   stopTimesByTrip: Map<string, GtfsStopTime[]>;
   tripsByStop: Map<string, { tripId: string; seqIndex: number }[]>;
   shapes: Map<string, GtfsShapePoint[]>;
-  stats: Record<string, number>;
+  stats: Record<string, number> & { feedEndDate: number | null };
 };
 
 export type EngineLeg = {

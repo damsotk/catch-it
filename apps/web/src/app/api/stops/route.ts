@@ -8,7 +8,9 @@ export async function GET() {
   const stops: TransitStop[] = await getTransitStops();
   const result: StopsResult = { stops };
 
+  // Always revalidate: a long max-age kept serving an old payload shape after
+  // the stop format changed, and the server already caches the list itself.
   return NextResponse.json(result, {
-    headers: { "Cache-Control": "public, max-age=3600" },
+    headers: { "Cache-Control": "no-cache" },
   });
 }

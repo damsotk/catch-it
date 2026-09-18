@@ -81,6 +81,14 @@ export async function POST(request: Request) {
 
   const gtfs: GtfsContext = await getGtfs();
 
+  const { date, feedEndDate } = gtfs.stats;
+  if (feedEndDate !== null && date > feedEndDate) {
+    return error(
+      `The GTFS feed expired on ${feedEndDate}. Download a fresh http://data.pid.cz/PID_GTFS.zip into data/gtfs and restart the server.`,
+      503,
+    );
+  }
+
   const originStopIds = findStopsByName(gtfs.stops, origin);
   if (originStopIds.length === 0) {
     return error(`No stop found matching "${origin}".`, 404);

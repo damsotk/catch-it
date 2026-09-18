@@ -233,14 +233,28 @@ export function findStopsByName(stops, query) {
   return exact.length > 0 ? exact : partial;
 }
 
+// Last service day the feed covers (YYYYMMDD). PID publishes a two-week
+// window, so an old download silently loses almost every trip.
+export async function loadFeedEndDate() {
+  let endDate = null;
+
+  await readCsv(gtfsFile("feed_info.txt"), (row) => {
+    if (row.feed_end_date) endDate = Number(row.feed_end_date);
+  });
+
+  return endDate;
+}
+
 export async function loadGtfs(date = new Date()) {
   const startedAt = Date.now();
 
-  const [{ stops, stopsByNode }, routes, activeServiceIds] = await Promise.all([
-    loadStops(),
-    loadRoutes(),
-    loadActiveServiceIds(date),
-  ]);
+  const [{ stops, stopsByNode }, routes, activeServiceIds, feedEndDate] =
+    await Promise.all([
+      loadStops(),
+      loadRoutes(),
+      loadActiveServiceIds(date),
+      loadFeedEndDate(),
+    ]);
 
   const trips = await loadActiveTrips(activeServiceIds);
 
@@ -259,6 +273,7 @@ export async function loadGtfs(date = new Date()) {
     shapes,
     stats: {
       date: toDateNum(date),
+      feedEndDate,
       stops: stops.size,
       nodes: stopsByNode.size,
       routes: routes.size,

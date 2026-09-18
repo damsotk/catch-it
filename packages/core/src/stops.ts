@@ -20,6 +20,8 @@ export type TransitStop = {
   lon: number;
   mode: TransitMode;
   color: string | null;
+  /** Compass bearing the stop's main mode departs in; null if ambiguous. */
+  bearing: number | null;
   lines: TransitStopLine[];
 };
 
