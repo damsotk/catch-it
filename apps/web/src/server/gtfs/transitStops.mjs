@@ -157,7 +157,6 @@ async function loadTransitStops() {
     const lineRoutes = [...entry.routeIds]
       .map((id) => routes.get(id))
       .sort(compareLines);
-    ы;
     const hasTrain = lineRoutes.some((route) => route.mode === "train");
     if (!entry.inCity && !hasTrain) continue;
 

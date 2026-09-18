@@ -69,7 +69,7 @@ export function PragueMap({ onLoad, legs }: PragueMapProps) {
         <StopsLayer
           data={stops}
           hoveredIndex={hoveredStop}
-          dimmed={Boolean(legs)}
+          hidden={Boolean(legs)}
         />
         {legs && <RouteLayer legs={legs} />}
       </Map>

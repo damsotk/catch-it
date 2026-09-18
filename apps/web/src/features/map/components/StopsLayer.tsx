@@ -119,33 +119,29 @@ type MapItem = {
 function toMapItems(data: StopsResult | null): MapItem[] {
   if (!data) return [];
 
-  const stops = data.stops.map(
-    (stop): MapItem => ({
-      kind: stop.stationId ? "station" : "stop",
-      name: stop.name,
-      lat: stop.lat,
-      lon: stop.lon,
-      mode: stop.mode,
-      color: stop.color ?? MODE_COLORS[stop.mode],
-      bearing: stop.bearing,
-      lines: stop.lines,
-    }),
-  );
+  const stops = data.stops.map((stop): MapItem => ({
+    kind: stop.stationId ? "station" : "stop",
+    name: stop.name,
+    lat: stop.lat,
+    lon: stop.lon,
+    mode: stop.mode,
+    color: stop.color ?? MODE_COLORS[stop.mode],
+    bearing: stop.bearing,
+    lines: stop.lines,
+  }));
 
-  const entrances = data.entrances.map(
-    (entrance): MapItem => ({
-      kind: "entrance",
-      name: entrance.name,
-      lat: entrance.lat,
-      lon: entrance.lon,
-      mode: "metro",
-      color: entrance.color ?? MODE_COLORS.metro,
-      bearing: null,
-      lines: entrance.lines,
-      code: entrance.code,
-      accessible: entrance.accessible,
-    }),
-  );
+  const entrances = data.entrances.map((entrance): MapItem => ({
+    kind: "entrance",
+    name: entrance.name,
+    lat: entrance.lat,
+    lon: entrance.lon,
+    mode: "metro",
+    color: entrance.color ?? MODE_COLORS.metro,
+    bearing: null,
+    lines: entrance.lines,
+    code: entrance.code,
+    accessible: entrance.accessible,
+  }));
 
   return [...stops, ...entrances];
 }
@@ -153,10 +149,14 @@ function toMapItems(data: StopsResult | null): MapItem[] {
 type StopsLayerProps = {
   data: StopsResult | null;
   hoveredIndex: number | null;
-  dimmed: boolean;
+  /** Hides every stop, e.g. while a picked route is on the map. */
+  hidden: boolean;
 };
 
-export function StopsLayer({ data, hoveredIndex, dimmed }: StopsLayerProps) {
+export function StopsLayer({ data, hoveredIndex, hidden }: StopsLayerProps) {
+  // Layers stay mounted and only toggle visibility, so they keep their place
+  // below the route layers instead of being re-added on top of them.
+  const visibility = hidden ? "none" : "visible";
   const items = useMemo(() => toMapItems(data), [data]);
   const iconsReady = useStopIcons(items);
 
@@ -193,7 +193,8 @@ export function StopsLayer({ data, hoveredIndex, dimmed }: StopsLayerProps) {
     [items],
   );
 
-  const hovered = hoveredIndex !== null ? (items[hoveredIndex] ?? null) : null;
+  const hovered =
+    !hidden && hoveredIndex !== null ? (items[hoveredIndex] ?? null) : null;
 
   return (
     <>
@@ -203,7 +204,7 @@ export function StopsLayer({ data, hoveredIndex, dimmed }: StopsLayerProps) {
             key={id}
             id={id}
             group={group}
-            dimmed={dimmed}
+            visibility={visibility}
             iconsReady={iconsReady}
           />
         ))}
@@ -217,6 +218,7 @@ export function StopsLayer({ data, hoveredIndex, dimmed }: StopsLayerProps) {
             ["!=", ["get", "kind"], "entrance"],
           ]}
           layout={{
+            visibility,
             "text-field": ["get", "name"],
             "text-font": LABEL_FONT,
             "text-size": 12,
@@ -236,7 +238,6 @@ export function StopsLayer({ data, hoveredIndex, dimmed }: StopsLayerProps) {
             "text-color": "#f2f2f7",
             "text-halo-color": "#0b0d12",
             "text-halo-width": 1.5,
-            "text-opacity": dimmed ? 0.4 : 1,
           }}
         />
         <Layer
@@ -245,6 +246,7 @@ export function StopsLayer({ data, hoveredIndex, dimmed }: StopsLayerProps) {
           minzoom={15.5}
           filter={["<", ["get", "rank"], MAJOR_RANK]}
           layout={{
+            visibility,
             "text-field": ["get", "name"],
             "text-font": LABEL_FONT,
             "text-size": 11,
@@ -264,7 +266,6 @@ export function StopsLayer({ data, hoveredIndex, dimmed }: StopsLayerProps) {
             "text-color": ["get", "color"],
             "text-halo-color": "#0b0d12",
             "text-halo-width": 1.5,
-            "text-opacity": dimmed ? 0.4 : 1,
           }}
         />
         <Layer
@@ -273,6 +274,7 @@ export function StopsLayer({ data, hoveredIndex, dimmed }: StopsLayerProps) {
           minzoom={ENTRANCE_ZOOM + 0.5}
           filter={GROUPS.entrances.filter}
           layout={{
+            visibility,
             "text-field": ["get", "code"],
             "text-font": LABEL_FONT,
             "text-size": 11,
@@ -283,7 +285,6 @@ export function StopsLayer({ data, hoveredIndex, dimmed }: StopsLayerProps) {
             "text-color": "#f2f2f7",
             "text-halo-color": "#0b0d12",
             "text-halo-width": 1.5,
-            "text-opacity": dimmed ? 0.4 : 1,
           }}
         />
       </Source>
@@ -302,12 +303,12 @@ type DotGroup = {
 function DotLayers({
   id,
   group,
-  dimmed,
+  visibility,
   iconsReady,
 }: {
   id: string;
   group: DotGroup;
-  dimmed: boolean;
+  visibility: "visible" | "none";
   iconsReady: boolean;
 }) {
   const { filter, minzoom = 0, maxzoom = 24 } = group;
@@ -323,14 +324,17 @@ function DotLayers({
         minzoom={minzoom}
         maxzoom={maxzoom}
         filter={filter}
-        layout={{ "circle-sort-key": ["get", "rank"] }}
+        layout={{ "circle-sort-key": ["get", "rank"], visibility }}
         paint={{
           "circle-color": ["get", "color"],
           "circle-radius": radius(GLOW_RADIUS),
           "circle-blur": 1,
-          "circle-opacity": dimmed
-            ? 0
-            : ["case", [">=", ["get", "rank"], MAJOR_RANK], 0.55, 0.3],
+          "circle-opacity": [
+            "case",
+            [">=", ["get", "rank"], MAJOR_RANK],
+            0.55,
+            0.3,
+          ],
         }}
       />
       {iconsReady && arrowZoom < maxzoom && (
@@ -342,6 +346,7 @@ function DotLayers({
           maxzoom={maxzoom}
           filter={["all", filter, ["has", "bearing"]]}
           layout={{
+            visibility,
             "icon-image": ["get", "arrow"],
             "icon-size": byZoom(fromZoom(arrowZoom), (base) => [
               "/",
@@ -356,7 +361,7 @@ function DotLayers({
             "symbol-sort-key": ["get", "rank"],
           }}
           paint={{
-            "icon-opacity": dimmed ? 0.35 : fadeIn(arrowZoom),
+            "icon-opacity": fadeIn(arrowZoom),
           }}
         />
       )}
@@ -367,7 +372,7 @@ function DotLayers({
         minzoom={minzoom}
         maxzoom={maxzoom}
         filter={filter}
-        layout={{ "circle-sort-key": ["get", "rank"] }}
+        layout={{ "circle-sort-key": ["get", "rank"], visibility }}
         paint={{
           "circle-color": ["get", "color"],
           "circle-radius": radius(CORE_RADIUS),
@@ -381,8 +386,6 @@ function DotLayers({
             15,
             ["case", [">=", ["get", "rank"], MAJOR_RANK], 2.5, 1.2],
           ],
-          "circle-opacity": dimmed ? 0.35 : 1,
-          "circle-stroke-opacity": dimmed ? 0.35 : 1,
         }}
       />
       {iconsReady && glyphZoom < maxzoom && (
@@ -394,6 +397,7 @@ function DotLayers({
           maxzoom={maxzoom}
           filter={filter}
           layout={{
+            visibility,
             "icon-image": ["get", "glyph"],
             "icon-size": byZoom(fromZoom(glyphZoom), (base) =>
               scaled((base * GLYPH_FILL) / GLYPH_SIZE),
@@ -403,7 +407,7 @@ function DotLayers({
             "symbol-sort-key": ["get", "rank"],
           }}
           paint={{
-            "icon-opacity": dimmed ? 0.35 : fadeIn(glyphZoom),
+            "icon-opacity": fadeIn(glyphZoom),
           }}
         />
       )}
