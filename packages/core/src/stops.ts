@@ -30,7 +30,6 @@ export type TransitEntrance = {
   id: string;
   stationId: string;
   name: string;
-  як;
   code: string;
   lat: number;
   lon: number;
