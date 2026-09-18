@@ -16,7 +16,7 @@ import {
   registerStopIcons,
 } from "@/features/map/stopIcons";
 
-const ENTRANCE_ZOOM = 16;
+export const ENTRANCE_ZOOM = 16;
 const ENTRANCE_SCALE = 1.3;
 const SOURCE_ID = "stops";
 
@@ -112,36 +112,38 @@ type MapItem = {
   color: string;
   bearing: number | null;
   lines: TransitStopLine[];
-  code?: string;
   accessible?: boolean;
 };
 
 function toMapItems(data: StopsResult | null): MapItem[] {
   if (!data) return [];
 
-  const stops = data.stops.map((stop): MapItem => ({
-    kind: stop.stationId ? "station" : "stop",
-    name: stop.name,
-    lat: stop.lat,
-    lon: stop.lon,
-    mode: stop.mode,
-    color: stop.color ?? MODE_COLORS[stop.mode],
-    bearing: stop.bearing,
-    lines: stop.lines,
-  }));
+  const stops = data.stops.map(
+    (stop): MapItem => ({
+      kind: stop.stationId ? "station" : "stop",
+      name: stop.name,
+      lat: stop.lat,
+      lon: stop.lon,
+      mode: stop.mode,
+      color: stop.color ?? MODE_COLORS[stop.mode],
+      bearing: stop.bearing,
+      lines: stop.lines,
+    }),
+  );
 
-  const entrances = data.entrances.map((entrance): MapItem => ({
-    kind: "entrance",
-    name: entrance.name,
-    lat: entrance.lat,
-    lon: entrance.lon,
-    mode: "metro",
-    color: entrance.color ?? MODE_COLORS.metro,
-    bearing: null,
-    lines: entrance.lines,
-    code: entrance.code,
-    accessible: entrance.accessible,
-  }));
+  const entrances = data.entrances.map(
+    (entrance): MapItem => ({
+      kind: "entrance",
+      name: entrance.name,
+      lat: entrance.lat,
+      lon: entrance.lon,
+      mode: "metro",
+      color: entrance.color ?? MODE_COLORS.metro,
+      bearing: null,
+      lines: entrance.lines,
+      accessible: entrance.accessible,
+    }),
+  );
 
   return [...stops, ...entrances];
 }
@@ -149,13 +151,10 @@ function toMapItems(data: StopsResult | null): MapItem[] {
 type StopsLayerProps = {
   data: StopsResult | null;
   hoveredIndex: number | null;
-  /** Hides every stop, e.g. while a picked route is on the map. */
   hidden: boolean;
 };
 
 export function StopsLayer({ data, hoveredIndex, hidden }: StopsLayerProps) {
-  // Layers stay mounted and only toggle visibility, so they keep their place
-  // below the route layers instead of being re-added on top of them.
   const visibility = hidden ? "none" : "visible";
   const items = useMemo(() => toMapItems(data), [data]);
   const iconsReady = useStopIcons(items);
@@ -175,7 +174,6 @@ export function StopsLayer({ data, hoveredIndex, hidden }: StopsLayerProps) {
           properties: {
             kind: item.kind,
             name: item.name,
-            code: item.code ?? "",
             color: item.color,
             ring: rank >= MAJOR_RANK ? "#ffffff" : "#0b0d12",
             rank,
@@ -264,25 +262,6 @@ export function StopsLayer({ data, hoveredIndex, hidden }: StopsLayerProps) {
           }}
           paint={{
             "text-color": ["get", "color"],
-            "text-halo-color": "#0b0d12",
-            "text-halo-width": 1.5,
-          }}
-        />
-        <Layer
-          id="stops-labels-entrance"
-          type="symbol"
-          minzoom={ENTRANCE_ZOOM + 0.5}
-          filter={GROUPS.entrances.filter}
-          layout={{
-            visibility,
-            "text-field": ["get", "code"],
-            "text-font": LABEL_FONT,
-            "text-size": 11,
-            "text-anchor": "left",
-            "text-offset": [1.3, 0],
-          }}
-          paint={{
-            "text-color": "#f2f2f7",
             "text-halo-color": "#0b0d12",
             "text-halo-width": 1.5,
           }}
@@ -466,7 +445,7 @@ function StopPopup({ item }: { item: MapItem }) {
         </div>
         {item.kind === "entrance" && (
           <div className="mt-0.5 text-xs text-white/60">
-            Entrance {item.code}
+            Metro entrance
             {item.accessible && " · step-free"}
           </div>
         )}

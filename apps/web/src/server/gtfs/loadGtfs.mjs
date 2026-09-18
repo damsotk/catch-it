@@ -80,8 +80,22 @@ export async function loadActiveServiceIds(date) {
 export async function loadStops() {
   const stops = new Map();
   const stopsByNode = new Map();
+  const entrancesByStation = new Map();
 
   await readCsv(gtfsFile("stops.txt"), (row) => {
+    if (row.location_type === "2") {
+      const entrance = {
+        id: row.stop_id,
+        code: row.stop_name,
+        lat: Number(row.stop_lat),
+        lon: Number(row.stop_lon),
+      };
+      const list = entrancesByStation.get(row.parent_station);
+      if (list) list.push(entrance);
+      else entrancesByStation.set(row.parent_station, [entrance]);
+      return;
+    }
+
     const nodeId = row.asw_node_id || row.stop_id;
 
     stops.set(row.stop_id, {
@@ -90,6 +104,7 @@ export async function loadStops() {
       lat: Number(row.stop_lat),
       lon: Number(row.stop_lon),
       nodeId,
+      stationId: row.parent_station || null,
     });
 
     const siblings = stopsByNode.get(nodeId);
@@ -97,7 +112,7 @@ export async function loadStops() {
     else stopsByNode.set(nodeId, [row.stop_id]);
   });
 
-  return { stops, stopsByNode };
+  return { stops, stopsByNode, entrancesByStation };
 }
 
 export async function loadRoutes() {
@@ -233,8 +248,6 @@ export function findStopsByName(stops, query) {
   return exact.length > 0 ? exact : partial;
 }
 
-// Last service day the feed covers (YYYYMMDD). PID publishes a two-week
-// window, so an old download silently loses almost every trip.
 export async function loadFeedEndDate() {
   let endDate = null;
 
@@ -248,13 +261,17 @@ export async function loadFeedEndDate() {
 export async function loadGtfs(date = new Date()) {
   const startedAt = Date.now();
 
-  const [{ stops, stopsByNode }, routes, activeServiceIds, feedEndDate] =
-    await Promise.all([
-      loadStops(),
-      loadRoutes(),
-      loadActiveServiceIds(date),
-      loadFeedEndDate(),
-    ]);
+  const [
+    { stops, stopsByNode, entrancesByStation },
+    routes,
+    activeServiceIds,
+    feedEndDate,
+  ] = await Promise.all([
+    loadStops(),
+    loadRoutes(),
+    loadActiveServiceIds(date),
+    loadFeedEndDate(),
+  ]);
 
   const trips = await loadActiveTrips(activeServiceIds);
 
@@ -266,6 +283,7 @@ export async function loadGtfs(date = new Date()) {
   return {
     stops,
     stopsByNode,
+    entrancesByStation,
     routes,
     trips,
     stopTimesByTrip,

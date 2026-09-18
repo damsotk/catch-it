@@ -4,6 +4,14 @@ export type GtfsStop = {
   lat: number;
   lon: number;
   nodeId: string;
+  stationId: string | null;
+};
+
+export type GtfsEntrance = {
+  id: string;
+  code: string;
+  lat: number;
+  lon: number;
 };
 
 export type GtfsRoute = {
@@ -39,6 +47,7 @@ export type GtfsShapePoint = {
 export type GtfsContext = {
   stops: Map<string, GtfsStop>;
   stopsByNode: Map<string, string[]>;
+  entrancesByStation: Map<string, GtfsEntrance[]>;
   routes: Map<string, GtfsRoute>;
   trips: Map<string, GtfsTrip>;
   stopTimesByTrip: Map<string, GtfsStopTime[]>;

@@ -20,6 +20,8 @@ export type RouteLeg = {
   alightTime: number;
   stops: RouteLegStop[];
   geometry: [number, number][];
+  startEntrance?: string;
+  endEntrance?: string;
 };
 
 export type RouteOption = {

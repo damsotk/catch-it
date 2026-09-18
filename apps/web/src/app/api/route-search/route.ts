@@ -12,7 +12,13 @@ import {
 } from "@/server/gtfs/loadGtfs.mjs";
 import { searchDepartures } from "@/server/gtfs/search.mjs";
 import { getGtfs } from "@/server/gtfs/store.mjs";
-import type { EngineLeg, EngineOption, GtfsContext } from "@/server/gtfs/types";
+import type {
+  EngineLeg,
+  EngineOption,
+  GtfsContext,
+  GtfsEntrance,
+  GtfsStop,
+} from "@/server/gtfs/types";
 
 export const runtime = "nodejs";
 
@@ -27,6 +33,47 @@ function error(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
+type Point = { lat: number; lon: number };
+
+function distance2(a: Point, b: Point): number {
+  const dx = (a.lon - b.lon) * Math.cos((a.lat * Math.PI) / 180);
+  const dy = a.lat - b.lat;
+  return dx * dx + dy * dy;
+}
+
+function entranceFor(
+  stop: GtfsStop | undefined,
+  other: GtfsStop | undefined,
+  gtfs: GtfsContext,
+): GtfsEntrance | null {
+  if (!stop?.stationId || !other) return null;
+  if (other.stationId === stop.stationId) return null;
+
+  const entrances = gtfs.entrancesByStation.get(stop.stationId);
+  if (!entrances?.length) return null;
+
+  return entrances.reduce((best, entrance) =>
+    distance2(entrance, other) < distance2(best, other) ? entrance : best,
+  );
+}
+
+function walkLeg(leg: EngineLeg, stops: RouteLegStop[], gtfs: GtfsContext) {
+  const from = gtfs.stops.get(leg.boardStopId);
+  const to = gtfs.stops.get(leg.alightStopId);
+  const exit = entranceFor(from, to, gtfs);
+  const entry = entranceFor(to, from, gtfs);
+
+  const points = stops.map((stop) => [stop.lon, stop.lat] as [number, number]);
+  if (exit) points[0] = [exit.lon, exit.lat];
+  if (entry) points[points.length - 1] = [entry.lon, entry.lat];
+
+  return {
+    geometry: points,
+    ...(exit && { startEntrance: exit.code }),
+    ...(entry && { endEntrance: entry.code }),
+  };
+}
+
 function toWireLeg(leg: EngineLeg, gtfs: GtfsContext): RouteLeg {
   const stops: RouteLegStop[] = leg.stopIds
     .map((id) => gtfs.stops.get(id))
@@ -38,12 +85,7 @@ function toWireLeg(leg: EngineLeg, gtfs: GtfsContext): RouteLeg {
       lon: stop.lon,
     }));
 
-  const shapePoints = leg.shapeId ? gtfs.shapes.get(leg.shapeId) : null;
-  const exact = leg.transfer
-    ? null
-    : sliceShape(shapePoints, leg.boardDist, leg.alightDist);
-
-  return {
+  const base = {
     transfer: leg.transfer,
     routeName: leg.routeName,
     routeColor: leg.routeColor ? `#${leg.routeColor}` : null,
@@ -51,6 +93,15 @@ function toWireLeg(leg: EngineLeg, gtfs: GtfsContext): RouteLeg {
     boardTime: leg.boardTime,
     alightTime: leg.alightTime,
     stops,
+  };
+
+  if (leg.transfer) return { ...base, ...walkLeg(leg, stops, gtfs) };
+
+  const shapePoints = leg.shapeId ? gtfs.shapes.get(leg.shapeId) : null;
+  const exact = sliceShape(shapePoints, leg.boardDist, leg.alightDist);
+
+  return {
+    ...base,
     geometry:
       exact ?? stops.map((stop) => [stop.lon, stop.lat] as [number, number]),
   };

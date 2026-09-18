@@ -2,7 +2,9 @@
 
 import { useMemo } from "react";
 import { Layer, Marker, Source } from "react-map-gl/maplibre";
+import { useZoomAtLeast } from "@/features/map/hooks/useZoomAtLeast";
 import { RouteLeg } from "@/features/map/types";
+import { ENTRANCE_ZOOM } from "./StopsLayer";
 
 const FALLBACK_ROUTE_COLOR = "#4b9fff";
 const TRANSFER_COLOR = "#9aa0a6";
@@ -13,6 +15,8 @@ type RouteLayerProps = {
 };
 
 export function RouteLayer({ legs }: RouteLayerProps) {
+  const showEntrances = useZoomAtLeast(ENTRANCE_ZOOM);
+
   const geojson = useMemo(
     () => ({
       type: "FeatureCollection" as const,
@@ -89,6 +93,43 @@ export function RouteLayer({ legs }: RouteLayerProps) {
           </Marker>
         );
       })}
+
+      {showEntrances &&
+        legs.flatMap((leg, index) => {
+          if (!leg.transfer || leg.geometry.length === 0) return [];
+          const entrances = [
+            {
+              code: leg.startEntrance,
+              at: leg.geometry[0],
+              color: legs[index - 1]?.routeColor,
+            },
+            {
+              code: leg.endEntrance,
+              at: leg.geometry[leg.geometry.length - 1],
+              color: legs[index + 1]?.routeColor,
+            },
+          ];
+
+          return entrances
+            .filter((entrance) => entrance.code)
+            .map(({ code, at, color }) => (
+              <Marker
+                key={`entrance-${index}-${code}`}
+                longitude={at[0]}
+                latitude={at[1]}
+              >
+                <span
+                  className="flex items-center gap-1 rounded-full py-0.5 pl-1 pr-2 text-xs font-bold text-white shadow-md shadow-black/40 ring-2 ring-white"
+                  style={{ backgroundColor: color ?? FALLBACK_ROUTE_COLOR }}
+                >
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white/25 text-[10px]">
+                    M
+                  </span>
+                  Metro entrance
+                </span>
+              </Marker>
+            ));
+        })}
 
       {finish && (
         <Marker longitude={finish[0]} latitude={finish[1]}>
