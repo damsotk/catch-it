@@ -31,7 +31,7 @@ function resolveGtfsDir() {
   );
 }
 
-const gtfsFile = (name) => path.join(resolveGtfsDir(), name);
+export const gtfsFile = (name) => path.join(resolveGtfsDir(), name);
 
 export function timeToSeconds(value) {
   const [h, m, s] = value.split(":");
