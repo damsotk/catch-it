@@ -1,40 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Map, MapLayerMouseEvent, MapRef } from "react-map-gl/maplibre";
-import { PRAGUE_CENTER, PRAGUE_DEFAULT_ZOOM } from "@catch-it/core";
-import { hideBaseMapIcons } from "@/features/map/hideBaseMapIcons";
-import { useFitRouteBounds } from "@/features/map/hooks/useFitRouteBounds";
-import { useStops } from "@/features/map/hooks/useStops";
-import { RouteLeg } from "@/features/map/types";
-import { RouteLayer } from "./RouteLayer";
-import { STOPS_INTERACTIVE_LAYER_IDS, StopsLayer } from "./StopsLayer";
-
-const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+import { Map } from "react-map-gl/maplibre";
+import {
+  INITIAL_VIEW,
+  MAP_STYLE_URL,
+  MAPTILER_KEY,
+} from "../constants/mapConfig";
+import { hideBaseMapIcons } from "../utils/hideBaseMapIcons";
 
 type PragueMapProps = {
   onLoad?: () => void;
-  legs?: RouteLeg[] | null;
+  children?: ReactNode;
 };
 
-export function PragueMap({ onLoad, legs }: PragueMapProps) {
+export function PragueMap({ onLoad, children }: PragueMapProps) {
   const [loaded, setLoaded] = useState(false);
-  const mapRef = useRef<MapRef>(null);
-  const stops = useStops();
-  const [hoveredStop, setHoveredStop] = useState<number | null>(null);
-
-  useFitRouteBounds(mapRef, legs, loaded);
-
-  const pickStop = (event: MapLayerMouseEvent) => {
-    const id = event.features?.[0]?.id;
-    setHoveredStop(typeof id === "number" ? id : null);
-  };
 
   useEffect(() => {
-    if (!MAPTILER_KEY) {
-      onLoad?.();
-    }
+    if (!MAPTILER_KEY) onLoad?.();
   }, [onLoad]);
 
   if (!MAPTILER_KEY) {
@@ -48,30 +33,15 @@ export function PragueMap({ onLoad, legs }: PragueMapProps) {
   return (
     <div className="relative h-full w-full">
       <Map
-        initialViewState={{
-          longitude: PRAGUE_CENTER.longitude,
-          latitude: PRAGUE_CENTER.latitude,
-          zoom: PRAGUE_DEFAULT_ZOOM,
-        }}
-        mapStyle={`https://api.maptiler.com/maps/streets-v4-dark/style.json?key=${MAPTILER_KEY}`}
+        initialViewState={INITIAL_VIEW}
+        mapStyle={MAP_STYLE_URL}
         onLoad={(event) => {
           hideBaseMapIcons(event.target);
           setLoaded(true);
           onLoad?.();
         }}
-        ref={mapRef}
-        interactiveLayerIds={STOPS_INTERACTIVE_LAYER_IDS}
-        cursor={hoveredStop !== null ? "pointer" : undefined}
-        onMouseMove={pickStop}
-        onClick={pickStop}
-        onMouseOut={() => setHoveredStop(null)}
       >
-        <StopsLayer
-          data={stops}
-          hoveredIndex={hoveredStop}
-          hidden={Boolean(legs)}
-        />
-        {legs && <RouteLayer legs={legs} />}
+        {children}
       </Map>
 
       <div

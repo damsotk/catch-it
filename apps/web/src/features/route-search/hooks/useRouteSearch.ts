@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { searchRoutes } from "@catch-it/api-client";
 import type { RouteSearchRequest, RouteSearchResult } from "@catch-it/core";

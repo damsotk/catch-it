@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { fetchStops } from "@catch-it/api-client";
 import type { StopsResult } from "@catch-it/core";

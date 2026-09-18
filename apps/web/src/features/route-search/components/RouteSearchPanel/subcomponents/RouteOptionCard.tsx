@@ -1,8 +1,8 @@
 import type { RouteOption } from "@catch-it/core";
-import { formatClock, formatDuration } from "./format";
-import { ArrowRightGlyph } from "./icons";
-
-const FALLBACK_ROUTE_COLOR = "#4b9fff";
+import { LineBadge } from "@/components/ui/LineBadge";
+import { formatClock, formatDuration } from "@/lib/format";
+import { routeColor } from "@/features/route-search/utils/routeColor";
+import { ArrowRightGlyph } from "@/components/ui/icons";
 
 function transfersLabel(transfers: number) {
   if (transfers === 0) return "Direct";
@@ -52,14 +52,11 @@ export function RouteOptionCard({
             key={`${leg.routeName}-${leg.boardTime}-${index}`}
             className="flex items-center gap-2"
           >
-            <span
-              className="min-w-9 shrink-0 rounded-full px-2 py-0.5 text-center text-[11px] font-bold text-white"
-              style={{
-                backgroundColor: leg.routeColor ?? FALLBACK_ROUTE_COLOR,
-              }}
-            >
-              {leg.routeName}
-            </span>
+            <LineBadge
+              name={leg.routeName}
+              color={routeColor(leg)}
+              className="min-w-9 shrink-0 text-center text-[11px]"
+            />
             <span className="min-w-0 flex-1 truncate text-xs text-neutral-300">
               {leg.stops[0]?.name ?? "—"}
             </span>
