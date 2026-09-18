@@ -11,6 +11,7 @@ export type TransitMode =
 export type TransitStopLine = {
   name: string;
   mode: TransitMode;
+  color?: string;
 };
 
 export type TransitStop = {
@@ -19,12 +20,26 @@ export type TransitStop = {
   lat: number;
   lon: number;
   mode: TransitMode;
+  stationId: string | null;
   color: string | null;
-  /** Compass bearing the stop's main mode departs in; null if ambiguous. */
   bearing: number | null;
+  lines: TransitStopLine[];
+};
+
+export type TransitEntrance = {
+  id: string;
+  stationId: string;
+  name: string;
+  як;
+  code: string;
+  lat: number;
+  lon: number;
+  accessible: boolean;
+  color: string | null;
   lines: TransitStopLine[];
 };
 
 export type StopsResult = {
   stops: TransitStop[];
+  entrances: TransitEntrance[];
 };

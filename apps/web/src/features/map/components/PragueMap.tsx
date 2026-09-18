@@ -9,9 +9,7 @@ import { useFitRouteBounds } from "@/features/map/hooks/useFitRouteBounds";
 import { useStops } from "@/features/map/hooks/useStops";
 import { RouteLeg } from "@/features/map/types";
 import { RouteLayer } from "./RouteLayer";
-import { STOPS_LAYER_ID, StopsLayer } from "./StopsLayer";
-
-const INTERACTIVE_LAYER_IDS = [STOPS_LAYER_ID];
+import { STOPS_INTERACTIVE_LAYER_IDS, StopsLayer } from "./StopsLayer";
 
 const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY;
 
@@ -62,14 +60,14 @@ export function PragueMap({ onLoad, legs }: PragueMapProps) {
           onLoad?.();
         }}
         ref={mapRef}
-        interactiveLayerIds={INTERACTIVE_LAYER_IDS}
+        interactiveLayerIds={STOPS_INTERACTIVE_LAYER_IDS}
         cursor={hoveredStop !== null ? "pointer" : undefined}
         onMouseMove={pickStop}
         onClick={pickStop}
         onMouseOut={() => setHoveredStop(null)}
       >
         <StopsLayer
-          stops={stops}
+          data={stops}
           hoveredIndex={hoveredStop}
           dimmed={Boolean(legs)}
         />

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Layer, Marker, Source, useMap } from "react-map-gl/maplibre";
 import type { ExpressionSpecification } from "maplibre-gl";
-import type { TransitStop } from "@catch-it/core";
+import type { StopsResult, TransitMode, TransitStopLine } from "@catch-it/core";
 import {
   MODE_COLORS,
   MODE_RANK,
@@ -16,7 +16,25 @@ import {
   registerStopIcons,
 } from "@/features/map/stopIcons";
 
-export const STOPS_LAYER_ID = "stops-core";
+const ENTRANCE_ZOOM = 16;
+const ENTRANCE_SCALE = 1.3;
+const SOURCE_ID = "stops";
+
+const GROUPS = {
+  stops: { filter: ["==", ["get", "kind"], "stop"] },
+  stations: {
+    filter: ["==", ["get", "kind"], "station"],
+    maxzoom: ENTRANCE_ZOOM,
+  },
+  entrances: {
+    filter: ["==", ["get", "kind"], "entrance"],
+    minzoom: ENTRANCE_ZOOM,
+  },
+} satisfies Record<string, DotGroup>;
+
+export const STOPS_INTERACTIVE_LAYER_IDS = Object.keys(GROUPS).map(
+  (group) => `${group}-core`,
+);
 
 const MAJOR_RANK = MODE_RANK.train;
 const MAX_POPUP_LINES = 14;
@@ -24,7 +42,6 @@ const LABEL_FONT = ["Roboto Medium", "Noto Sans Medium"];
 
 type ZoomStops = [zoom: number, value: number][];
 
-// Dot radius per zoom for a stop of scale 1; bigger modes multiply it.
 const CORE_RADIUS: ZoomStops = [
   [10, 1.3],
   [13, 3.2],
@@ -38,7 +55,6 @@ const GLOW_RADIUS: ZoomStops = [
   [17, 18],
 ];
 
-// Glyphs show up once the dot is large enough to hold one.
 const GLYPH_MIN_ZOOM = 15;
 const ARROW_MIN_ZOOM = 14;
 const GLYPH_FILL = 1.45;
@@ -70,7 +86,6 @@ const radiusAt = (zoom: number) => {
   return CORE_RADIUS[CORE_RADIUS.length - 1][1];
 };
 
-// CORE_RADIUS trimmed to start at `min`, for layers with a minzoom.
 const fromZoom = (min: number): ZoomStops => [
   [min, radiusAt(min)],
   ...CORE_RADIUS.filter(([zoom]) => zoom > min),
@@ -88,141 +103,119 @@ const fadeIn = (from: number): ExpressionSpecification => [
   1,
 ];
 
-const stopColor = (stop: TransitStop) => stop.color ?? MODE_COLORS[stop.mode];
+type MapItem = {
+  kind: "stop" | "station" | "entrance";
+  name: string;
+  lat: number;
+  lon: number;
+  mode: TransitMode;
+  color: string;
+  bearing: number | null;
+  lines: TransitStopLine[];
+  code?: string;
+  accessible?: boolean;
+};
+
+function toMapItems(data: StopsResult | null): MapItem[] {
+  if (!data) return [];
+
+  const stops = data.stops.map(
+    (stop): MapItem => ({
+      kind: stop.stationId ? "station" : "stop",
+      name: stop.name,
+      lat: stop.lat,
+      lon: stop.lon,
+      mode: stop.mode,
+      color: stop.color ?? MODE_COLORS[stop.mode],
+      bearing: stop.bearing,
+      lines: stop.lines,
+    }),
+  );
+
+  const entrances = data.entrances.map(
+    (entrance): MapItem => ({
+      kind: "entrance",
+      name: entrance.name,
+      lat: entrance.lat,
+      lon: entrance.lon,
+      mode: "metro",
+      color: entrance.color ?? MODE_COLORS.metro,
+      bearing: null,
+      lines: entrance.lines,
+      code: entrance.code,
+      accessible: entrance.accessible,
+    }),
+  );
+
+  return [...stops, ...entrances];
+}
 
 type StopsLayerProps = {
-  stops: TransitStop[] | null;
+  data: StopsResult | null;
   hoveredIndex: number | null;
   dimmed: boolean;
 };
 
-export function StopsLayer({ stops, hoveredIndex, dimmed }: StopsLayerProps) {
-  const iconsReady = useStopIcons(stops);
+export function StopsLayer({ data, hoveredIndex, dimmed }: StopsLayerProps) {
+  const items = useMemo(() => toMapItems(data), [data]);
+  const iconsReady = useStopIcons(items);
 
   const geojson = useMemo(
     () => ({
       type: "FeatureCollection" as const,
-      features: (stops ?? []).map((stop, index) => {
-        const rank = MODE_RANK[stop.mode];
-        const color = stopColor(stop);
+      features: items.map((item, index) => {
+        const rank = MODE_RANK[item.mode];
         return {
           type: "Feature" as const,
           id: index,
           geometry: {
             type: "Point" as const,
-            coordinates: [stop.lon, stop.lat],
+            coordinates: [item.lon, item.lat],
           },
           properties: {
-            name: stop.name,
-            color,
+            kind: item.kind,
+            name: item.name,
+            code: item.code ?? "",
+            color: item.color,
             ring: rank >= MAJOR_RANK ? "#ffffff" : "#0b0d12",
             rank,
-            scale: MODE_SCALE[stop.mode],
-            glyph: glyphImageId(stop.mode, color),
-            ...(stop.bearing !== null && {
-              bearing: stop.bearing,
-              arrow: arrowImageId(color),
+            scale:
+              item.kind === "entrance" ? ENTRANCE_SCALE : MODE_SCALE[item.mode],
+            glyph: glyphImageId(item.mode, item.color),
+            ...(item.bearing !== null && {
+              bearing: item.bearing,
+              arrow: arrowImageId(item.color),
             }),
           },
         };
       }),
     }),
-    [stops],
+    [items],
   );
 
-  const hovered =
-    hoveredIndex !== null ? (stops?.[hoveredIndex] ?? null) : null;
+  const hovered = hoveredIndex !== null ? (items[hoveredIndex] ?? null) : null;
 
   return (
     <>
-      <Source id="stops" type="geojson" data={geojson}>
-        <Layer
-          id="stops-glow"
-          type="circle"
-          layout={{ "circle-sort-key": ["get", "rank"] }}
-          paint={{
-            "circle-color": ["get", "color"],
-            "circle-radius": radius(GLOW_RADIUS),
-            "circle-blur": 1,
-            "circle-opacity": dimmed
-              ? 0
-              : ["case", [">=", ["get", "rank"], MAJOR_RANK], 0.55, 0.3],
-          }}
-        />
-        {iconsReady && (
-          <Layer
-            id="stops-direction"
-            type="symbol"
-            minzoom={ARROW_MIN_ZOOM}
-            filter={["has", "bearing"]}
-            layout={{
-              "icon-image": ["get", "arrow"],
-              "icon-size": byZoom(
-                fromZoom(ARROW_MIN_ZOOM),
-                (base) => [
-                  "/",
-                  ["+", scaled(base), ARROW_GAP],
-                  ARROW_BASE,
-                ],
-              ),
-              "icon-rotate": ["get", "bearing"],
-              "icon-rotation-alignment": "map",
-              "icon-pitch-alignment": "map",
-              "icon-allow-overlap": true,
-              "icon-ignore-placement": true,
-              "symbol-sort-key": ["get", "rank"],
-            }}
-            paint={{
-              "icon-opacity": dimmed ? 0.35 : fadeIn(ARROW_MIN_ZOOM),
-            }}
+      <Source id={SOURCE_ID} type="geojson" data={geojson}>
+        {Object.entries(GROUPS).map(([id, group]) => (
+          <DotLayers
+            key={id}
+            id={id}
+            group={group}
+            dimmed={dimmed}
+            iconsReady={iconsReady}
           />
-        )}
-        <Layer
-          id={STOPS_LAYER_ID}
-          type="circle"
-          layout={{ "circle-sort-key": ["get", "rank"] }}
-          paint={{
-            "circle-color": ["get", "color"],
-            "circle-radius": radius(CORE_RADIUS),
-            "circle-stroke-color": ["get", "ring"],
-            "circle-stroke-width": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              10,
-              ["case", [">=", ["get", "rank"], MAJOR_RANK], 1, 0.3],
-              15,
-              ["case", [">=", ["get", "rank"], MAJOR_RANK], 2.5, 1.2],
-            ],
-            "circle-opacity": dimmed ? 0.35 : 1,
-            "circle-stroke-opacity": dimmed ? 0.35 : 1,
-          }}
-        />
-        {iconsReady && (
-          <Layer
-            id="stops-glyphs"
-            type="symbol"
-            minzoom={GLYPH_MIN_ZOOM}
-            layout={{
-              "icon-image": ["get", "glyph"],
-              "icon-size": byZoom(
-                fromZoom(GLYPH_MIN_ZOOM),
-                (base) => scaled((base * GLYPH_FILL) / GLYPH_SIZE),
-              ),
-              "icon-allow-overlap": true,
-              "icon-ignore-placement": true,
-              "symbol-sort-key": ["get", "rank"],
-            }}
-            paint={{
-              "icon-opacity": dimmed ? 0.35 : fadeIn(GLYPH_MIN_ZOOM),
-            }}
-          />
-        )}
+        ))}
         <Layer
           id="stops-labels-major"
           type="symbol"
           minzoom={13}
-          filter={[">=", ["get", "rank"], MAJOR_RANK]}
+          filter={[
+            "all",
+            [">=", ["get", "rank"], MAJOR_RANK],
+            ["!=", ["get", "kind"], "entrance"],
+          ]}
           layout={{
             "text-field": ["get", "name"],
             "text-font": LABEL_FONT,
@@ -274,22 +267,157 @@ export function StopsLayer({ stops, hoveredIndex, dimmed }: StopsLayerProps) {
             "text-opacity": dimmed ? 0.4 : 1,
           }}
         />
+        <Layer
+          id="stops-labels-entrance"
+          type="symbol"
+          minzoom={ENTRANCE_ZOOM + 0.5}
+          filter={GROUPS.entrances.filter}
+          layout={{
+            "text-field": ["get", "code"],
+            "text-font": LABEL_FONT,
+            "text-size": 11,
+            "text-anchor": "left",
+            "text-offset": [1.3, 0],
+          }}
+          paint={{
+            "text-color": "#f2f2f7",
+            "text-halo-color": "#0b0d12",
+            "text-halo-width": 1.5,
+            "text-opacity": dimmed ? 0.4 : 1,
+          }}
+        />
       </Source>
 
-      {hovered && <StopPopup stop={hovered} />}
+      {hovered && <StopPopup item={hovered} />}
     </>
   );
 }
 
-// Registers the SVG glyphs and one arrow per stop colour on the map, and
-// reports when they are ready so symbol layers never reference missing images.
-function useStopIcons(stops: TransitStop[] | null) {
+type DotGroup = {
+  filter: ExpressionSpecification;
+  minzoom?: number;
+  maxzoom?: number;
+};
+
+function DotLayers({
+  id,
+  group,
+  dimmed,
+  iconsReady,
+}: {
+  id: string;
+  group: DotGroup;
+  dimmed: boolean;
+  iconsReady: boolean;
+}) {
+  const { filter, minzoom = 0, maxzoom = 24 } = group;
+  const arrowZoom = Math.max(minzoom, ARROW_MIN_ZOOM);
+  const glyphZoom = Math.max(minzoom, GLYPH_MIN_ZOOM);
+
+  return (
+    <>
+      <Layer
+        id={`${id}-glow`}
+        source={SOURCE_ID}
+        type="circle"
+        minzoom={minzoom}
+        maxzoom={maxzoom}
+        filter={filter}
+        layout={{ "circle-sort-key": ["get", "rank"] }}
+        paint={{
+          "circle-color": ["get", "color"],
+          "circle-radius": radius(GLOW_RADIUS),
+          "circle-blur": 1,
+          "circle-opacity": dimmed
+            ? 0
+            : ["case", [">=", ["get", "rank"], MAJOR_RANK], 0.55, 0.3],
+        }}
+      />
+      {iconsReady && arrowZoom < maxzoom && (
+        <Layer
+          id={`${id}-direction`}
+          source={SOURCE_ID}
+          type="symbol"
+          minzoom={arrowZoom}
+          maxzoom={maxzoom}
+          filter={["all", filter, ["has", "bearing"]]}
+          layout={{
+            "icon-image": ["get", "arrow"],
+            "icon-size": byZoom(fromZoom(arrowZoom), (base) => [
+              "/",
+              ["+", scaled(base), ARROW_GAP],
+              ARROW_BASE,
+            ]),
+            "icon-rotate": ["get", "bearing"],
+            "icon-rotation-alignment": "map",
+            "icon-pitch-alignment": "map",
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+            "symbol-sort-key": ["get", "rank"],
+          }}
+          paint={{
+            "icon-opacity": dimmed ? 0.35 : fadeIn(arrowZoom),
+          }}
+        />
+      )}
+      <Layer
+        id={`${id}-core`}
+        source={SOURCE_ID}
+        type="circle"
+        minzoom={minzoom}
+        maxzoom={maxzoom}
+        filter={filter}
+        layout={{ "circle-sort-key": ["get", "rank"] }}
+        paint={{
+          "circle-color": ["get", "color"],
+          "circle-radius": radius(CORE_RADIUS),
+          "circle-stroke-color": ["get", "ring"],
+          "circle-stroke-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            ["case", [">=", ["get", "rank"], MAJOR_RANK], 1, 0.3],
+            15,
+            ["case", [">=", ["get", "rank"], MAJOR_RANK], 2.5, 1.2],
+          ],
+          "circle-opacity": dimmed ? 0.35 : 1,
+          "circle-stroke-opacity": dimmed ? 0.35 : 1,
+        }}
+      />
+      {iconsReady && glyphZoom < maxzoom && (
+        <Layer
+          id={`${id}-glyphs`}
+          source={SOURCE_ID}
+          type="symbol"
+          minzoom={glyphZoom}
+          maxzoom={maxzoom}
+          filter={filter}
+          layout={{
+            "icon-image": ["get", "glyph"],
+            "icon-size": byZoom(fromZoom(glyphZoom), (base) =>
+              scaled((base * GLYPH_FILL) / GLYPH_SIZE),
+            ),
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+            "symbol-sort-key": ["get", "rank"],
+          }}
+          paint={{
+            "icon-opacity": dimmed ? 0.35 : fadeIn(glyphZoom),
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function useStopIcons(items: MapItem[]) {
   const { current: mapRef } = useMap();
   const [readyKey, setReadyKey] = useState<string | null>(null);
 
   const colors = useMemo(
-    () => [...new Set((stops ?? []).map(stopColor))].sort(),
-    [stops],
+    () => [...new Set(items.map((item) => item.color))].sort(),
+    [items],
   );
   const key = colors.join(",");
 
@@ -312,14 +440,14 @@ function useStopIcons(stops: TransitStop[] | null) {
   return readyKey === key;
 }
 
-function StopPopup({ stop }: { stop: TransitStop }) {
-  const visible = stop.lines.slice(0, MAX_POPUP_LINES);
-  const hidden = stop.lines.length - visible.length;
+function StopPopup({ item }: { item: MapItem }) {
+  const visible = item.lines.slice(0, MAX_POPUP_LINES);
+  const hidden = item.lines.length - visible.length;
 
   return (
     <Marker
-      longitude={stop.lon}
-      latitude={stop.lat}
+      longitude={item.lon}
+      latitude={item.lat}
       anchor="bottom"
       offset={[0, -14]}
       style={{ pointerEvents: "none", zIndex: 20 }}
@@ -328,16 +456,19 @@ function StopPopup({ stop }: { stop: TransitStop }) {
         <div className="flex items-center gap-2 text-sm font-semibold text-white">
           <span
             className="h-2.5 w-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: stopColor(stop) }}
+            style={{ backgroundColor: item.color }}
           />
-          <span className="truncate">{stop.name}</span>
+          <span className="truncate">{item.name}</span>
         </div>
+        {item.kind === "entrance" && (
+          <div className="mt-0.5 text-xs text-white/60">
+            Entrance {item.code}
+            {item.accessible && " · step-free"}
+          </div>
+        )}
         <div className="mt-1.5 flex flex-wrap gap-1">
           {visible.map((line) => {
-            const color =
-              line.mode === "metro" && stop.color
-                ? stop.color
-                : MODE_COLORS[line.mode];
+            const color = line.color ?? MODE_COLORS[line.mode];
             return (
               <span
                 key={`${line.mode}-${line.name}`}

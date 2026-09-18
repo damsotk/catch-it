@@ -98,12 +98,15 @@ async function loadTransitStops() {
     else patterns.set(patternKey, { routeId: row.route_id, stops: [point] });
   });
 
-  // Platforms of one station often repeat at identical coordinates (one row
-  // per fare zone), so they are merged into a single map point.
   const byPosition = new Map();
   const positions = new Map();
+  const entranceRows = [];
 
   await readCsv(gtfsFile("stops.txt"), (row) => {
+    if (row.location_type === "2") {
+      entranceRows.push(row);
+      return;
+    }
     if (row.location_type && row.location_type !== "0") return;
 
     positions.set(row.stop_id, {
@@ -114,14 +117,25 @@ async function loadTransitStops() {
     const routeIds = routeIdsByStop.get(row.stop_id);
     if (!routeIds) return;
 
-    const key = `${row.stop_name}|${row.stop_lat}|${row.stop_lon}`;
+    const metroRouteIds = [...routeIds]
+      .filter((id) => routes.get(id).mode === "metro")
+      .sort();
+    const stationId =
+      row.parent_station && metroRouteIds.length > 0
+        ? row.parent_station
+        : null;
+
+    const key = stationId
+      ? `metro|${stationId}|${metroRouteIds.join(",")}`
+      : `${row.stop_name}|${row.stop_lat}|${row.stop_lon}`;
     let entry = byPosition.get(key);
     if (!entry) {
       entry = {
         id: row.stop_id,
         name: row.stop_name,
-        lat: Number(row.stop_lat),
-        lon: Number(row.stop_lon),
+        stationId,
+        latSum: 0,
+        lonSum: 0,
         stopIds: [],
         routeIds: new Set(),
         inCity: false,
@@ -130,6 +144,8 @@ async function loadTransitStops() {
     }
 
     entry.stopIds.push(row.stop_id);
+    entry.latSum += Number(row.stop_lat);
+    entry.lonSum += Number(row.stop_lon);
     if (isInCity(row)) entry.inCity = true;
     for (const routeId of routeIds) entry.routeIds.add(routeId);
   });
@@ -141,8 +157,7 @@ async function loadTransitStops() {
     const lineRoutes = [...entry.routeIds]
       .map((id) => routes.get(id))
       .sort(compareLines);
-
-    // Train stations stay everywhere so the rail network remains visible.
+    ы;
     const hasTrain = lineRoutes.some((route) => route.mode === "train");
     if (!entry.inCity && !hasTrain) continue;
 
@@ -152,7 +167,11 @@ async function loadTransitStops() {
       const lineKey = `${route.mode}|${route.name}`;
       if (seen.has(lineKey)) continue;
       seen.add(lineKey);
-      lines.push({ name: route.name, mode: route.mode });
+      lines.push({
+        name: route.name,
+        mode: route.mode,
+        ...(route.mode === "metro" && route.color && { color: route.color }),
+      });
     }
 
     const primary = lineRoutes[0];
@@ -160,8 +179,9 @@ async function loadTransitStops() {
     stops.push({
       id: entry.id,
       name: entry.name,
-      lat: entry.lat,
-      lon: entry.lon,
+      lat: round(entry.latSum / entry.stopIds.length),
+      lon: round(entry.lonSum / entry.stopIds.length),
+      stationId: entry.stationId,
       mode: primary.mode,
       color: primary.mode === "metro" ? primary.color : null,
       bearing: departureBearing(entry.stopIds, departures, primary.mode),
@@ -169,11 +189,47 @@ async function loadTransitStops() {
     });
   }
 
-  return stops;
+  return { stops, entrances: buildEntrances(entranceRows, stops) };
 }
 
-// Unit vectors from every stop towards the next stop of each line pattern,
-// in a flat local projection (good enough over a few hundred metres).
+const round = (value) => Math.round(value * 1e6) / 1e6;
+
+function buildEntrances(entranceRows, stops) {
+  const stationStops = new Map();
+  for (const stop of stops) {
+    if (!stop.stationId) continue;
+    const list = stationStops.get(stop.stationId);
+    if (list) list.push(stop);
+    else stationStops.set(stop.stationId, [stop]);
+  }
+
+  const entrances = [];
+
+  for (const row of entranceRows) {
+    const members = stationStops.get(row.parent_station);
+    if (!members) continue;
+
+    const lines = members
+      .flatMap((stop) => stop.lines)
+      .filter((line) => line.mode === "metro")
+      .sort(compareLines);
+
+    entrances.push({
+      id: row.stop_id,
+      stationId: row.parent_station,
+      name: members[0].name,
+      code: row.stop_name,
+      lat: Number(row.stop_lat),
+      lon: Number(row.stop_lon),
+      accessible: row.wheelchair_boarding === "1",
+      color: members.find((stop) => stop.lines[0].name === lines[0].name).color,
+      lines,
+    });
+  }
+
+  return entrances;
+}
+
 function collectDepartures(patterns, positions, routes) {
   const departures = new Map();
 
@@ -201,8 +257,6 @@ function collectDepartures(patterns, positions, routes) {
   return departures;
 }
 
-// Compass bearing (0 = north, clockwise) in which the stop's main mode leaves,
-// or null for termini and platforms served in both directions.
 function departureBearing(stopIds, departures, mode) {
   let x = 0;
   let y = 0;

@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { fetchStops } from "@catch-it/api-client";
-import type { TransitStop } from "@catch-it/core";
+import type { StopsResult } from "@catch-it/core";
 
 export function useStops() {
-  const [stops, setStops] = useState<TransitStop[] | null>(null);
+  const [data, setData] = useState<StopsResult | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
 
     fetchStops({ signal: controller.signal })
-      .then((result) => setStops(result.stops))
+      .then(setData)
       .catch((cause) => {
         if (!controller.signal.aborted) console.error(cause);
       });
@@ -19,5 +19,5 @@ export function useStops() {
     return () => controller.abort();
   }, []);
 
-  return stops;
+  return data;
 }
